@@ -1,14 +1,22 @@
 package api
 
 import (
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
 	"sync"
 	"testing"
+
+	"github.com/TomascpMarques/dropmedical/database"
+	"github.com/TomascpMarques/dropmedical/models"
+	"github.com/gin-gonic/gin"
 )
 
 var wg sync.WaitGroup
 
 func TestCreateServer(t *testing.T) {
-	/* r := gin.Default()
+	r := gin.Default()
 
 	db, _ := database.NewPostgresConnection()
 
@@ -22,11 +30,11 @@ func TestCreateServer(t *testing.T) {
 			wg.Done()
 		}
 	}()
-	wg.Wait() */
+	wg.Wait()
 }
 
 func TestShouldCreateDropper(t *testing.T) {
-	/* wg.Add(1)
+	wg.Add(1)
 
 	resp, err := http.PostForm("http://localhost:8080/api/dropper", url.Values{
 		"name":        {"Supa"},
@@ -54,5 +62,5 @@ func TestShouldCreateDropper(t *testing.T) {
 		t.Fatalf("Body não válido")
 	}
 
-	wg.Done() */
+	wg.Done()
 }
