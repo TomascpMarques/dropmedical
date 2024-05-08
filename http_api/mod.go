@@ -1,5 +1,5 @@
-// Package api joins  the routes for this example
-package api
+// Package http_api joins  the routes for this example
+package http_api
 
 import (
 	"errors"
@@ -26,6 +26,11 @@ func SetupRoutesGroup(router *gin.Engine, db *gorm.DB) {
 	api.POST("/dropper", func(ctx *gin.Context) { registerDropperPOST(ctx, db) })
 	api.POST("/dropper/section", func(ctx *gin.Context) { registerDropperSectionPOST(ctx, db) })
 	api.POST("/dropper/section/reload", func(ctx *gin.Context) { reloadDropperSectionPOST(ctx, db) })
+	// ------------------------
+
+	health_check := router.Group("/health_check")
+	// ------------------------
+	health_check.GET("/up", func(ctx *gin.Context) { ctx.Status(200) })
 	// ------------------------
 }
 
@@ -171,8 +176,8 @@ func registerDropperSectionPOST(c *gin.Context, db *gorm.DB) {
 }
 
 type newDropper struct {
-	Name       string `form:"name" json:"name" binding:"required"`
-	Active     bool   `form:"active" json:"active" binding:"required"`
+	Name string `form:"name" json:"name" binding:"required"`
+	// Active     bool   `form:"active" json:"active" binding:"required"`
 	MachineUrl string `form:"machine_url" json:"machine_url"`
 }
 
@@ -187,7 +192,7 @@ func registerDropperPOST(c *gin.Context, db *gorm.DB) {
 		return
 	}
 
-	dropper := models.NewDropper(newDropper.Name, newDropper.Active, newDropper.MachineUrl)
+	dropper := models.NewDropper(newDropper.Name, newDropper.MachineUrl)
 
 	err := db.Select("ID").Create(&dropper).Error
 

@@ -3,30 +3,53 @@ package main
 
 import (
 	"log"
+	"net"
+	"sync"
 
-	"github.com/gin-gonic/gin"
-	"github.com/joho/godotenv"
+	"github.com/wind-c/comqtt/v2/mqtt/listeners"
 
-	"github.com/TomascpMarques/dropmedical/api"
-	"github.com/TomascpMarques/dropmedical/database"
+	"github.com/TomascpMarques/dropmedical/mqtt_api"
+	"github.com/TomascpMarques/dropmedical/setup"
 )
 
+var wg sync.WaitGroup
+
 func main() {
-	err := godotenv.Load(".env")
+	// Inicialização do servidor de MQTT
+	server := mqtt_api.NewMqttServer()
+	tcp_listener_mqtt := listeners.NewTCP("t1", ":1883", nil)
+
+	err := server.AddListener(tcp_listener_mqtt)
 	if err != nil {
-		log.Fatalf("Failed to read the environment variables: %s", err)
+		log.Fatal(err)
 	}
 
-	db, err := database.NewPostgresConnection()
+	wg.Add(1)
+	go func() {
+		err := server.Serve()
+		if err != nil {
+			log.Fatal(err)
+			wg.Done()
+		}
+	}()
+	// ---------------------------------
+
+	// Inicialização do servidor web
+	wg.Add(1)
+	tcp_listener_gin, err := net.Listen("tcp", ":8081")
 	if err != nil {
-		log.Fatalf("Error: %s", err)
+		log.Fatal(err)
 	}
 
-	r := gin.Default()
+	go func() {
+		app, err := setup.SetupGinApp() // listen and serve on 0.0.0.0:8081 / [::]:8081
+		if err != nil {
+			log.Fatal(err)
+			wg.Done()
+		}
+		_ = app.RunListener(tcp_listener_gin)
+	}()
+	// ----------------------------------
 
-	// db, _ := controllers.NewDataSource(controllers.Memory)
-
-	api.SetupRoutesGroup(r, db)
-
-	_ = r.Run() // listen and serve on 0.0.0.0:8080
+	wg.Wait()
 }

@@ -5,9 +5,15 @@ import (
 	"testing"
 
 	"github.com/TomascpMarques/dropmedical/database"
+	"github.com/joho/godotenv"
 )
 
 func TestSetupDatabase(t *testing.T) {
+	err := godotenv.Load("../.env")
+	if err != nil {
+		log.Printf("Failed to read the environment variables: %s\n", err)
+	}
+
 	db, _ := database.NewPostgresConnection()
 	MigrateAll(db)
 }
@@ -15,7 +21,7 @@ func TestSetupDatabase(t *testing.T) {
 func TestCreateDropper(t *testing.T) {
 	db, _ := database.NewPostgresConnection()
 
-	dropper := NewDropper("SupaOne", true, "")
+	dropper := NewDropper("SupaOne", "")
 	_, err := dropper.Create(db)
 	if err != nil {
 		t.Fatalf("Failed to create a dropper")
@@ -25,7 +31,7 @@ func TestCreateDropper(t *testing.T) {
 func TestReloadDropperSection(t *testing.T) {
 	db, _ := database.NewPostgresConnection()
 
-	dropper := NewDropper("SupaTwo", true, "")
+	dropper := NewDropper("SupaTwo", "")
 	id, err := dropper.Create(db)
 	if err != nil {
 		t.Fatalf("Failed to create a dropper")
@@ -57,7 +63,7 @@ func TestReloadDropperSection(t *testing.T) {
 func TestCreateSection(t *testing.T) {
 	db, _ := database.NewPostgresConnection()
 
-	dropper := NewDropper("SupaThree", true, "")
+	dropper := NewDropper("SupaThree", "")
 	_, err := dropper.Create(db)
 	if err != nil {
 		t.Fatalf("Failed to create a dropper")

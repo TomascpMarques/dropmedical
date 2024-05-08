@@ -15,9 +15,9 @@ type Dropper struct {
 	gorm.Model `json:"-"`
 
 	// Allow read and create of field SerialID
-	SerialID   uuid.UUID `gorm:"<-:create;index;default:gen_random_uuid();" json:"serial_id"`
+	SerialID   uuid.UUID `gorm:"<-;index;default:gen_random_uuid();" json:"serial_id"`
 	Active     bool      `json:"active"`
-	MachineURL string    `gorm:"<-;default:null" json:"machine_url"`
+	MachineURL string    `gorm:"<-;default:null;uniqueIndex" json:"machine_url"`
 	Name       string    `json:"name"`
 
 	// A dropper has many Schedules
@@ -197,10 +197,10 @@ func MigrateAll(db *gorm.DB) {
 }
 
 // NewDropper creates a new dropper struct instance
-func NewDropper(name string, active bool, machine_url string) *Dropper {
+func NewDropper(name string, machine_url string) *Dropper {
 	return &Dropper{
 		Name:       name,
-		Active:     active,
+		Active:     false,
 		MachineURL: machine_url,
 	}
 }

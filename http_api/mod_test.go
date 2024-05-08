@@ -1,8 +1,9 @@
-package api
+package http_api
 
 import (
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"sync"
@@ -11,11 +12,17 @@ import (
 	"github.com/TomascpMarques/dropmedical/database"
 	"github.com/TomascpMarques/dropmedical/models"
 	"github.com/gin-gonic/gin"
+	"github.com/joho/godotenv"
 )
 
 var wg sync.WaitGroup
 
 func TestCreateServer(t *testing.T) {
+	err := godotenv.Load("../.env")
+	if err != nil {
+		log.Printf("Failed to read the environment variables: %s\n", err)
+	}
+
 	r := gin.Default()
 
 	db, _ := database.NewPostgresConnection()

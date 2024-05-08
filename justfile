@@ -5,16 +5,12 @@ entry := "main"
 dev:
   gow run {{entry}}.go
 
-# Testa tudo, renicia a db
-test: rebuild-db init-db
-  go test ./... -v
-
 # Testa tudo, não renicia a db
 t:
   go test ./... -v
 
 # Testa um modulo singularmente
-test MODULE:
+test MODULE: rebuild-db init-db
   go test ./{{MODULE}}/... -v
 
 # Corre o ficheiro com a função de entrada
