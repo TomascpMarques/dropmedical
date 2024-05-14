@@ -1,6 +1,8 @@
 package http_api
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -18,9 +20,9 @@ import (
 var wg sync.WaitGroup
 
 func TestCreateServer(t *testing.T) {
-	err := godotenv.Load("../.env")
+	err := godotenv.Load("../.env/local.env")
 	if err != nil {
-		log.Printf("Failed to read the environment variables: %s\n", err)
+		log.Fatalf("X Failed to read the environment variables: %s\n", err)
 	}
 
 	r := gin.Default()
@@ -43,10 +45,17 @@ func TestCreateServer(t *testing.T) {
 func TestShouldCreateDropper(t *testing.T) {
 	wg.Add(1)
 
+	resp := createDropper(t, "supa", "none")
+
+	fmt.Printf("Value: %v\n", resp)
+
+	wg.Done()
+}
+
+func createDropper(t *testing.T, name, machine_url string) (dropper models.Dropper) {
 	resp, err := http.PostForm("http://localhost:8080/api/dropper", url.Values{
-		"name":        {"Supa"},
-		"machine_url": {"Something"},
-		"active":      {"true"},
+		"name":        {name},
+		"machine_url": {machine_url},
 	})
 	if err != nil {
 		wg.Done()
@@ -59,15 +68,39 @@ func TestShouldCreateDropper(t *testing.T) {
 
 	read, _ := io.ReadAll(resp.Body)
 	defer resp.Body.Close()
+	value := []byte(read)
 
-	value := string(read)
+	err = json.Unmarshal(value, &dropper)
+	if err != nil {
+		t.Fatalf("Erro: %s", err.Error())
+	}
+	return
+}
 
-	fmt.Printf("Value: %s\n", value)
+func TestShouldReloadDropperSection(t *testing.T) {
+	wg.Add(1)
+	defer wg.Done()
 
-	if len(read) < 1 {
-		wg.Done()
-		t.Fatalf("Body não válido")
+	dropper := createDropper(t, "supper", "yes")
+
+	sectionReload := reloadDropperSection{
+		Dropper:  dropper.ID,
+		Section:  1,
+		PillName: "Brufen",
+		Quantity: 3,
 	}
 
-	wg.Done()
+	json, _ := json.Marshal(sectionReload)
+
+	resp, err := http.Post(
+		"http://localhost:8080/api/dropper/section/reload",
+		"application/json",
+		bytes.NewBuffer(json),
+	)
+	if err != nil {
+		t.Fatalf("Erro: %s", err.Error())
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf("Erro!!!")
+	}
 }

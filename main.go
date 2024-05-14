@@ -8,13 +8,16 @@ import (
 
 	"github.com/wind-c/comqtt/v2/mqtt/listeners"
 
-	"github.com/TomascpMarques/dropmedical/mqtt_api"
-	"github.com/TomascpMarques/dropmedical/setup"
+	mqtt_api "github.com/TomascpMarques/dropmedical/mqtt_api"
+	setup "github.com/TomascpMarques/dropmedical/setup"
 )
 
 var wg sync.WaitGroup
 
 func main() {
+	// Load env files
+	setup.LoadEnvironment()
+
 	// Inicialização do servidor de MQTT
 	server := mqtt_api.NewMqttServer()
 	tcp_listener_mqtt := listeners.NewTCP("t1", ":1883", nil)

@@ -1,0 +1,128 @@
+{
+    "/health_check": [
+        {
+            "route": "/up",
+            "method": "GET",
+            "success": {
+                "200": null
+            }
+        }
+    ],
+    "/api": [
+        {
+            "route": "/dropper/section/reload",
+            "method": "POST",
+            "success": {
+                "200": {
+                    "status": "sucesso",
+                    "razao": "Secção carregada"
+                }
+            },
+            "error": {
+                "400": {
+                    "status": "error",
+                    "reason": "dados fornecidos são invalidos ou mal-formados"
+                },
+                "500": {
+                    "status": "erro",
+                    "razao": "Erro interno tente mais tarde"
+                }
+            },
+            "content-type": [
+                "application/x-www-form-urlencoded"
+            ],
+            "accepts": [
+                {
+                    "type": "x-www-form-urlencoded",
+                    "fields": {
+                        "dropper_id": "number",
+                        "section_pos": "number",
+                        "pill_name": "string",
+                        "pill_quantity": "number"
+                    }
+                }
+            ]
+        },
+        {
+            "route": "/dropper/section",
+            "method": "POST",
+            "success": {
+                "200": {
+                    "status": "sucesso",
+                    "message": "secção criada"
+                }
+            },
+            "error": {
+                "400": {
+                    "status": "error",
+                    "reason": "<erro> || dados inválidos enviados para criar dropper"
+                },
+                "500": {
+                    "status": "erro",
+                    "razao": "Ocorreu um erro inesperado"
+                }
+            },
+            "content-type": [
+                "application/x-www-form-urlencoded"
+            ],
+            "accepts": [
+                {
+                    "type": "x-www-form-urlencoded",
+                    "fields": {
+                        "dropper_id": "number",
+                        "name": "string",
+                        "pills": "Map<string, int>"
+                    }
+                }
+            ]
+        },
+        {
+            "route": "/dropper",
+            "method": "POST",
+            "success": {
+                "200": {
+                    "serial_id": "string",
+                    "active": "bool",
+                    "machine_url": "string",
+                    "name": "string",
+                    "schedules": "object[]",
+                    "sections": "object[]"
+                }
+            },
+            "error": {
+                "400": {
+                    "status": "error",
+                    "reason": "Bad query parameters"
+                },
+                "409": {
+                    "status": "erro",
+                    "razao": "Este dropper já existe"
+                },
+                "500": {
+                    "status": "erro",
+                    "razao": "Ocorreu um erro inesperado"
+                }
+            },
+            "content-type": [
+                "application/x-www-form-urlencoded",
+                "application/json"
+            ],
+            "accepts": [
+                {
+                    "type": "json",
+                    "fields": {
+                        "machine_url": "string",
+                        "name": "string"
+                    }
+                },
+                {
+                    "type": "x-www-form-urlencoded",
+                    "fields": {
+                        "machine_url": "string",
+                        "name": "string"
+                    }
+                }
+            ]
+        }
+    ]
+}

@@ -31,13 +31,36 @@ type DispenseSchedule struct {
 	gorm.Model `json:"-"`
 
 	// Dropper foreign key
-	DropperID uint `json:"-"`
+	DropperID uint `gorm:"uniqueIndex:uniqueSchedule" json:"-"`
 
-	Name        string    `gorm:"unique" json:"name"`
-	Active      bool      `gorm:"default:true;" json:"active"`
-	Description string    `json:"descriptiont"`
-	StartDate   time.Time `json:"start_date"`
-	EndDate     time.Time `json:"end_date"`
+	Name        string        `gorm:"uniqueIndex:uniqueSchedule" json:"name"`
+	Active      bool          `gorm:"default:true;" json:"active"`
+	Description string        `json:"description"`
+	StartDate   time.Time     `json:"start_date"`
+	EndDate     time.Time     `json:"end_date"`
+	Interval    time.Duration `gorm:"default:6;" json:"interval"`
+}
+
+type ScheduledPills struct {
+	gorm.Model `json:"-"`
+
+	// DispenseSchedule foreign key
+	DispenseScheduleID uint `json:"-"`
+
+	Pills []Pill `json:"pills"`
+
+	Dispensed     bool      `gorm:"default:false;" json:"dispensed"`
+	DispensedTime time.Time ` json:"dispensed_time"`
+}
+
+type Pill struct {
+	gorm.Model `json:"-"`
+
+	// DispenseSchedule foreign key
+	ScheduledPillsID uint `json:"-"`
+
+	Name  string `gorm:"name" json:"name"`
+	Count uint   `gorm:"count" json:"count"`
 }
 
 type DropperSection struct {
@@ -54,11 +77,49 @@ type DropperSection struct {
 type Position struct {
 	gorm.Model `json:"-"`
 
-	DropperSectionID uint
+	DropperSectionID uint `json:"-"`
 
 	Position uint   `json:"position"`
 	PillName string `json:"pill_name"`
 	Empty    bool   `json:"is_empty"`
+}
+
+/*
+	Name        string        `gorm:"unique" json:"name"`
+	Active      bool          `gorm:"default:true;" json:"active"`
+	Description string        `json:"description"`
+	StartDate   time.Time     `json:"start_date"`
+	EndDate     time.Time     `json:"end_date"`
+	Interval
+*/
+
+// TODO - Scan all dropper sections, to find which have the pills necessary to fulfil the request
+
+func (d *Dropper) CreateDispenseSchedule(
+	db *gorm.DB,
+	active bool,
+	name, descricao string,
+	start, end time.Time,
+	interval time.Duration,
+) (err error) {
+	schedule := DispenseSchedule{
+		DropperID:   d.ID,
+		Name:        name,
+		Active:      active,
+		Description: descricao,
+		StartDate:   start,
+		EndDate:     end,
+		Interval:    interval,
+	}
+
+	// Create if not exists
+	err = db.FirstOrCreate(DispenseSchedule{Name: name}, &schedule).Error
+	if err != nil {
+		log.Printf("Erro inesperado ao criar drop schedule: %s", err.Error())
+		return err
+	}
+
+	return
 }
 
 // ReloadSection recebe um ponteiro gorm.DB, uma secção, o nome do comprimido e a sua quantidade
@@ -83,7 +144,7 @@ func (dp *Dropper) ReloadSection(db *gorm.DB, section uint, pillName string, cou
 		log.Printf("Erro inesperado: %s", err.Error())
 		return errors.New("erro inesperado encontrado")
 	}
-	dp.reloadDropper(db)
+	dp.reloadDropperData(db)
 
 	if len(dp.Sections[section].Positions) > 8 {
 		return errors.New("secção cheia")
@@ -154,7 +215,7 @@ func (dp *Dropper) CreateDropperSection(db *gorm.DB, name string, pills PillList
 		}
 	}
 
-	log.Printf("PillCount: %d", pillCount)
+	// log.Printf("PillCount: %d", pillCount)
 	newSection = DropperSection{
 		DropperID:       dp.ID,
 		Section:         name,
@@ -183,14 +244,14 @@ func (dp *Dropper) CreateDropperSection(db *gorm.DB, name string, pills PillList
 	dp.Sections = append(dp.Sections, newSection)
 	db.Save(dp)
 
-	dp.reloadDropper(db)
+	dp.reloadDropperData(db)
 
 	return newSection.ID, nil
 }
 
 // MigrateAll runs all migrations for the models defined in this folder
 func MigrateAll(db *gorm.DB) {
-	err := db.AutoMigrate(&Dropper{}, &DispenseSchedule{}, &DropperSection{}, &Position{})
+	err := db.AutoMigrate(&Dropper{}, &DispenseSchedule{}, &DropperSection{}, &Position{}, &ScheduledPills{}, &Pill{})
 	if err != nil {
 		log.Fatalf("Failed to migrate gorm models: %s", err.Error())
 	}
@@ -205,7 +266,7 @@ func NewDropper(name string, machine_url string) *Dropper {
 	}
 }
 
-func (d *Dropper) reloadDropper(db *gorm.DB) {
+func (d *Dropper) reloadDropperData(db *gorm.DB) {
 	db.Preload("Sections.Positions").Find(d, "id", d.ID)
 }
 

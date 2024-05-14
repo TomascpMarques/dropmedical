@@ -1,0 +1,35 @@
+services:
+  db:
+    image: postgres
+    environment:
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_HOST=local
+      - POSTGRES_USER=postgres
+      - POSTGRES_DB=main
+      - PG_PASSWORD=password
+    ports:
+      - "5432:5432"
+    networks:
+      - backend
+    healthcheck:
+      # "-h", "localhost", "-p", "5432", "-t", "5"
+      test: ["CMD-SHELL","pg_isready", "-p", "5432", "-U", "postgres", "-t", "5"]
+      interval: 10s
+      timeout: 0s
+      retries: 3
+
+  api:
+    image: "dropmedical:latest"
+    environment:
+      - ENVIRONMENT=production
+    ports:
+      - "80:8081"
+      - "1883:1883"
+    networks:
+      - backend
+    depends_on:
+      db:
+        condition: service_healthy
+
+networks:
+  backend: {}

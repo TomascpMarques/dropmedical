@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -26,12 +27,215 @@ func SetupRoutesGroup(router *gin.Engine, db *gorm.DB) {
 	api.POST("/dropper", func(ctx *gin.Context) { registerDropperPOST(ctx, db) })
 	api.POST("/dropper/section", func(ctx *gin.Context) { registerDropperSectionPOST(ctx, db) })
 	api.POST("/dropper/section/reload", func(ctx *gin.Context) { reloadDropperSectionPOST(ctx, db) })
+	api.POST("/dropper/schedule", func(ctx *gin.Context) { createDropperDispenseSchedulePOST(ctx, db) })
+
+	api.GET("/dropper/section/pills", func(ctx *gin.Context) { dropperSectionPillsGET(ctx, db) })
+	api.GET("/dropper/activate", func(ctx *gin.Context) { activateDropperGET(ctx, db) })
+	api.GET("/dropper/dispense", func(ctx *gin.Context) { dropperDispensePillsGET(ctx, db) })
 	// ------------------------
 
 	health_check := router.Group("/health_check")
 	// ------------------------
 	health_check.GET("/up", func(ctx *gin.Context) { ctx.Status(200) })
 	// ------------------------
+}
+
+type getSectionPillsQuery struct {
+	Dropper uint `form:"dropper" json:"dropper"`
+	Section uint `form:"section" json:"section"`
+}
+
+func dropperSectionPillsGET(ctx *gin.Context, db *gorm.DB) {
+	var query getSectionPillsQuery
+
+	if err := ctx.ShouldBindQuery(&query); err != nil {
+		log.Printf("Tentativa de ativar o dropper falhada! <query> : %s \n", err.Error())
+		ctx.JSON(
+			400,
+			returnMessage(
+				"erro",
+				"query string fornecida invalida ou mal-formada",
+			),
+		)
+		return
+	}
+
+	var section models.DropperSection
+	err := db.Model(models.DropperSection{DropperID: query.Dropper}).Preload("Positions").First(&section).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		ctx.JSON(
+			404,
+			returnMessage(
+				"not found",
+				"o dropper não foi encontrado",
+			),
+		)
+		return
+	} else if err != nil {
+		log.Printf("Erro inesperado: %s", err.Error())
+		ctx.JSON(
+			500,
+			returnMessage(
+				"erro",
+				"tente novamente mais tarde",
+			),
+		)
+		return
+	}
+
+	ctx.JSON(
+		200,
+		section.Positions,
+	)
+}
+
+type dropperActivationQuery struct {
+	DropperID uint `form:"id"`
+}
+
+func activateDropperGET(ctx *gin.Context, db *gorm.DB) {
+	var queryParams dropperActivationQuery
+
+	if err := ctx.ShouldBindQuery(&queryParams); err != nil {
+		log.Printf("Tentativa de ativar o dropper falhada! <query> : %s \n", err.Error())
+		ctx.JSON(
+			400,
+			returnMessage(
+				"erro",
+				"query string fornecida invalida ou mal-formada",
+			),
+		)
+		return
+	}
+
+	dropper := models.Dropper{
+		Model:  gorm.Model{ID: queryParams.DropperID},
+		Active: false,
+	}
+
+	err := db.Limit(1).Find(&dropper).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		ctx.JSON(
+			404,
+			returnMessage(
+				"not found",
+				"o dropper não foi encontrado",
+			),
+		)
+		return
+	} else if err != nil {
+		log.Printf("Erro inesperado: %s", err.Error())
+		ctx.JSON(
+			500,
+			returnMessage(
+				"erro",
+				"tente novamente mais tarde",
+			),
+		)
+		return
+	}
+
+	dropper.Active = true
+	db.Save(&dropper)
+
+	ctx.JSON(
+		200,
+		returnMessage(
+			"sucesso",
+			"dropper ativado",
+		),
+	)
+}
+
+type createDispenseScheduleQuery struct {
+	DropperID uint `query:"dropper"`
+}
+
+type createDispenseScheduleBody struct {
+	Name        string        `json:"name"`
+	Active      bool          `json:"active"`
+	Description string        `json:"descriptiont"`
+	StartDate   time.Time     `json:"start_date"`
+	EndDate     time.Time     `json:"end_date"`
+	Interval    time.Duration `json:"interval"`
+}
+
+func createDropperDispenseSchedulePOST(c *gin.Context, db *gorm.DB) {
+	var requestQuery createDispenseScheduleQuery
+	var newDispenseSchedule createDispenseScheduleBody
+
+	if err := c.BindQuery(&requestQuery); err != nil {
+		log.Printf("Tentativa de criar horario falhada! <query> : %s \n", err.Error())
+		c.JSON(
+			400,
+			returnMessage(
+				"erro",
+				"dados fornecidos são invalidos ou mal-formados",
+			),
+		)
+		return
+	}
+
+	if err := c.ShouldBind(&newDispenseSchedule); err != nil {
+		log.Printf("Tentativa de criar horario falhada! <body> : %s \n", err.Error())
+		c.JSON(
+			400,
+			returnMessage(
+				"erro",
+				"dados fornecidos são invalidos ou mal-formados",
+			),
+		)
+		return
+	}
+
+	var dropper models.Dropper
+	err := db.Find(&dropper, requestQuery.DropperID).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		log.Printf("O dropper pedido <%d> não existe\n", requestQuery.DropperID)
+		c.JSON(
+			400,
+			returnMessage(
+				"erro",
+				"dados fornecidos são invalidos ou mal-formados",
+			),
+		)
+		return
+	} else if err != nil {
+		log.Printf("Erro interno, base de dados: %s\n", err.Error())
+		c.JSON(
+			500,
+			returnMessage(
+				"erro",
+				"Erro interno tente mais tarde",
+			),
+		)
+		return
+	}
+
+	if err := dropper.CreateDispenseSchedule(
+		db, newDispenseSchedule.Active,
+		newDispenseSchedule.Name,
+		newDispenseSchedule.Description,
+		newDispenseSchedule.StartDate,
+		newDispenseSchedule.EndDate,
+		newDispenseSchedule.Interval); err != nil {
+		log.Println("O horário não foi criado")
+		c.JSON(
+			400,
+			returnMessage(
+				"erro",
+				"dados fornecidos são invalidos ou mal-formados",
+			),
+		)
+		return
+	}
+}
+
+type dispensePills struct {
+}
+
+func dropperDispensePillsGET(ctx *gin.Context, db *gorm.DB) {
+	panic("unimplemented")
 }
 
 func apiLogger(param gin.LogFormatterParams) string {
@@ -53,10 +257,10 @@ func returnMessage(status, message string) gin.H {
 }
 
 type reloadDropperSection struct {
-	Dropper  uint   `form:"dropper_id"`
-	Section  uint   `form:"section_pos"`
-	PillName string `form:"pill_name"`
-	Quantity uint   `form:"pill_quantity"`
+	Dropper  uint   `form:"dropper_id" json:"dropper_id"`
+	Section  uint   `form:"section_pos" json:"section_pos"`
+	PillName string `form:"pill_name" json:"pill_name"`
+	Quantity uint   `form:"pill_quantity" json:"pill_quantity"`
 }
 
 func reloadDropperSectionPOST(c *gin.Context, db *gorm.DB) {
@@ -123,7 +327,7 @@ func reloadDropperSectionPOST(c *gin.Context, db *gorm.DB) {
 }
 
 type newDropperSection struct {
-	Dropper uint            `form:"dropper"`
+	Dropper uint            `form:"dropper_id"`
 	Name    string          `form:"name"`
 	Pills   models.PillList `form:"pills"`
 }
@@ -155,7 +359,7 @@ func registerDropperSectionPOST(c *gin.Context, db *gorm.DB) {
 		)
 	}
 
-	_, err = dropper.CreateDropperSection(db, newSection.Name, newSection.Pills)
+	section_id, err := dropper.CreateDropperSection(db, newSection.Name, newSection.Pills)
 	if err != nil {
 		c.JSON(
 			400,
@@ -168,10 +372,10 @@ func registerDropperSectionPOST(c *gin.Context, db *gorm.DB) {
 
 	c.JSON(
 		201,
-		returnMessage(
-			"sucesso",
-			"secção criada",
-		),
+		gin.H{
+			"status":    "sucesso",
+			"id_seccao": section_id,
+		},
 	)
 }
 

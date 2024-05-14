@@ -1,0 +1,7 @@
+/.vscode
+/target
+/scripts
+justfile
+.gitignone
+Dockerfile
+compose.yaml

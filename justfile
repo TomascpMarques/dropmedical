@@ -17,6 +17,10 @@ test MODULE: rebuild-db init-db
 run:
   go run {{entry}}.go
 
+# Run the app with env variables
+app:
+  bash scripts/initApp.bash
+
 # Constroi a aplicação e verifica para race conditions
 build:
   go build --race -o target/{{prog_name}}
@@ -32,6 +36,13 @@ createm NAME:
 # Reconstroi a base de dados
 rebuild-db:
   docker stop sqlx-go; docker rm sqlx-go;
+
+# Docker build go api
+dk-build:
+  docker build -t dropmedical .
+
+compose: dk-build
+  docker compose up
 
 # Incia a base de dados local
 init-db:

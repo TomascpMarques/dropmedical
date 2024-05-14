@@ -4,17 +4,26 @@ package database
 import (
 	"log"
 	"os"
+	"time"
 
-	"gorm.io/driver/postgres"
-	"gorm.io/gorm"
+	postgres "gorm.io/driver/postgres"
+	gorm "gorm.io/gorm"
 )
 
 // NewPostgresConnection creates a new postgres db connection
-func NewPostgresConnection() (*gorm.DB, error) {
+func NewPostgresConnection() (db *gorm.DB, err error) {
 	postgresDSN, exists := os.LookupEnv("DATABASE_URL")
 	if !exists {
-		log.Fatalf("Variavél de ambiente para URL da base de dados não encontrada")
+		log.Fatalf("Variável de ambiente para URL da base de dados não encontrada")
 	}
 
-	return gorm.Open(postgres.Open(postgresDSN), &gorm.Config{})
+	for range 5 {
+		log.Printf("Trying...")
+		db, err = gorm.Open(postgres.Open(postgresDSN), &gorm.Config{})
+		if err == nil {
+			break
+		}
+		time.Sleep(time.Second * 3)
+	}
+	return db, err
 }

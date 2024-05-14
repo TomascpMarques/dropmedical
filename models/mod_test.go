@@ -9,7 +9,7 @@ import (
 )
 
 func TestSetupDatabase(t *testing.T) {
-	err := godotenv.Load("../.env")
+	err := godotenv.Load("../.env/local.env")
 	if err != nil {
 		log.Printf("Failed to read the environment variables: %s\n", err)
 	}
@@ -21,7 +21,7 @@ func TestSetupDatabase(t *testing.T) {
 func TestCreateDropper(t *testing.T) {
 	db, _ := database.NewPostgresConnection()
 
-	dropper := NewDropper("SupaOne", "")
+	dropper := NewDropper("SupaOne", "SupaOne")
 	_, err := dropper.Create(db)
 	if err != nil {
 		t.Fatalf("Failed to create a dropper")
@@ -31,7 +31,7 @@ func TestCreateDropper(t *testing.T) {
 func TestReloadDropperSection(t *testing.T) {
 	db, _ := database.NewPostgresConnection()
 
-	dropper := NewDropper("SupaTwo", "")
+	dropper := NewDropper("SupaTwo", "SupaTwo")
 	id, err := dropper.Create(db)
 	if err != nil {
 		t.Fatalf("Failed to create a dropper")
@@ -63,7 +63,7 @@ func TestReloadDropperSection(t *testing.T) {
 func TestCreateSection(t *testing.T) {
 	db, _ := database.NewPostgresConnection()
 
-	dropper := NewDropper("SupaThree", "")
+	dropper := NewDropper("SupaThree", "SupaThree")
 	_, err := dropper.Create(db)
 	if err != nil {
 		t.Fatalf("Failed to create a dropper")
