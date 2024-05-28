@@ -10,7 +10,7 @@ t:
   go test ./... -v
 
 # Testa um modulo singularmente
-test MODULE: rebuild-db init-db
+test MODULE: rebuild-db
   go test ./{{MODULE}}/... -v
 
 # Corre o ficheiro com a função de entrada
@@ -35,7 +35,7 @@ createm NAME:
 
 # Reconstroi a base de dados
 rebuild-db:
-  docker stop sqlx-go; docker rm sqlx-go;
+  docker stop sqlx-go; docker rm sqlx-go; just init-db;
 
 # Docker build go api
 dk-build:

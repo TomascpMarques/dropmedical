@@ -4,11 +4,11 @@ import (
 	"log"
 	"os"
 
-	database "github.com/TomascpMarques/dropmedical/database"
 	http_api "github.com/TomascpMarques/dropmedical/http_api"
 	models "github.com/TomascpMarques/dropmedical/models"
 	gin "github.com/gin-gonic/gin"
 	godotenv "github.com/joho/godotenv"
+	"gorm.io/gorm"
 )
 
 // app environments
@@ -38,12 +38,7 @@ func LoadEnvironment() {
 	}
 }
 
-func SetupGinApp() (engine *gin.Engine, err error) {
-	db, err := database.NewPostgresConnection()
-	if err != nil {
-		log.Printf("DB Error: %s\n", err)
-		os.Exit(1)
-	}
+func SetupGinApp(db *gorm.DB) (engine *gin.Engine, err error) {
 	models.MigrateAll(db)
 
 	engine = gin.Default()

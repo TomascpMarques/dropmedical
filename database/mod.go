@@ -19,7 +19,7 @@ func NewPostgresConnection() (db *gorm.DB, err error) {
 
 	for range 5 {
 		log.Printf("Trying...")
-		db, err = gorm.Open(postgres.Open(postgresDSN), &gorm.Config{})
+		db, err = gorm.Open(postgres.Open(postgresDSN), &gorm.Config{TranslateError: true})
 		if err == nil {
 			break
 		}

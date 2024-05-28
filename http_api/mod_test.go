@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/TomascpMarques/dropmedical/database"
 	"github.com/TomascpMarques/dropmedical/models"
@@ -20,6 +21,7 @@ import (
 var wg sync.WaitGroup
 
 func TestCreateServer(t *testing.T) {
+	wg.Add(1)
 	err := godotenv.Load("../.env/local.env")
 	if err != nil {
 		log.Fatalf("X Failed to read the environment variables: %s\n", err)
@@ -47,7 +49,7 @@ func TestShouldCreateDropper(t *testing.T) {
 
 	resp := createDropper(t, "supa", "none")
 
-	fmt.Printf("Value: %v\n", resp)
+	fmt.Printf("Value: %+v\n", resp)
 
 	wg.Done()
 }
@@ -77,30 +79,121 @@ func createDropper(t *testing.T, name, machine_url string) (dropper models.Dropp
 	return
 }
 
-func TestShouldReloadDropperSection(t *testing.T) {
+func TestCreateDropperSchedule(t *testing.T) {
 	wg.Add(1)
 	defer wg.Done()
 
-	dropper := createDropper(t, "supper", "yes")
+	dropper := createDropper(t, "WITH_SCHEDULE", "WITH_SCHEDULE_URL")
 
-	sectionReload := reloadDropperSection{
-		Dropper:  dropper.ID,
+	/* sectionReload := reloadDropperSection{
+		Dropper:  dropper.SerialID,
 		Section:  1,
-		PillName: "Brufen",
-		Quantity: 3,
+		PillName: "Aspirin",
+		Quantity: 5,
 	}
 
-	json, _ := json.Marshal(sectionReload)
+	json_payload, _ := json.Marshal(sectionReload)
 
 	resp, err := http.Post(
 		"http://localhost:8080/api/dropper/section/reload",
 		"application/json",
-		bytes.NewBuffer(json),
+		bytes.NewBuffer(json_payload),
 	)
 	if err != nil {
 		t.Fatalf("Erro: %s", err.Error())
 	}
 	if resp.StatusCode != 200 {
-		t.Fatalf("Erro!!!")
+		t.Fatalf("Erro!!! A> %d", resp.StatusCode)
+	} */
+
+	newSection := newDropperSection{
+		Dropper: dropper.SerialID,
+		Name:    "SECTION 1",
+		Pills:   map[string]int{},
+	}
+	json_payload, _ := json.Marshal(newSection)
+
+	resp, err := http.Post(
+		"http://localhost:8080/api/dropper/section",
+		"application/json",
+		bytes.NewBuffer(json_payload),
+	)
+	if err != nil {
+		t.Fatalf("Erro: %s", err.Error())
+	}
+	if resp.StatusCode != 201 {
+		t.Fatalf("Erro!!! > %d", resp.StatusCode)
+	}
+
+	schedule_payload := createDispenseScheduleBody{
+		Name:        "TEST ONE",
+		Active:      true,
+		Description: "TEST ONE DESCRIPTION",
+		StartDate:   time.Now().UTC(),
+		EndDate:     time.Now().Add(time.Hour * 24 * 2).UTC(),
+		Interval:    time.Hour * 6,
+	}
+	json_payload, _ = json.Marshal(schedule_payload)
+
+	url := "http://localhost:8080/api/dropper/schedule?dropper=" + dropper.SerialID.String()
+	log.Printf("URL IS: %s", url)
+	resp, err = http.Post(
+		url,
+		"application/json",
+		bytes.NewBuffer(json_payload),
+	)
+	if err != nil {
+		t.Fatalf("ERRO IS: %s", err.Error())
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf("Erro!!! > %d", resp.StatusCode)
+	}
+}
+
+func TestShouldCreateAndReloadDropperSection(t *testing.T) {
+	wg.Add(1)
+	defer wg.Done()
+
+	dropper := createDropper(t, "supper", "yes")
+
+	newSection := newDropperSection{
+		Dropper: dropper.SerialID,
+		Name:    "SECTION 1",
+		Pills:   map[string]int{},
+	}
+	json_payload, _ := json.Marshal(newSection)
+
+	resp, err := http.Post(
+		"http://localhost:8080/api/dropper/section",
+		"application/json",
+		bytes.NewBuffer(json_payload),
+	)
+	if err != nil {
+		t.Fatalf("Erro: %s", err.Error())
+	}
+	if resp.StatusCode != 201 {
+		t.Fatalf("Erro!!! > %d", resp.StatusCode)
+	}
+
+	sectionReload := reloadDropperSection{
+		Dropper:  dropper.SerialID,
+		Section:  1,
+		PillName: "Brufen",
+		Quantity: 3,
+	}
+
+	json_payload, _ = json.Marshal(sectionReload)
+	t.Logf("Payload: %s", json_payload)
+
+	resp, err = http.Post(
+		"http://localhost:8080/api/dropper/section/reload",
+		"application/json",
+		bytes.NewBuffer(json_payload),
+	)
+	if err != nil {
+		t.Fatalf("Erro: %s", err.Error())
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf("Erro!!! > %d", resp.StatusCode)
 	}
 }

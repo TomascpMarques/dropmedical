@@ -3,9 +3,11 @@ package models
 
 import (
 	"errors"
+	"fmt"
 	"log"
 	"time"
 
+	"github.com/TomascpMarques/dropmedical/mqtt_api"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
@@ -46,8 +48,6 @@ type ScheduledPills struct {
 
 	// DispenseSchedule foreign key
 	DispenseScheduleID uint `json:"-"`
-
-	Pills []Pill `json:"pills"`
 
 	Dispensed     bool      `gorm:"default:false;" json:"dispensed"`
 	DispensedTime time.Time ` json:"dispensed_time"`
@@ -93,7 +93,123 @@ type Position struct {
 	Interval
 */
 
+var (
+	ErrDropperNotFound = errors.New("nenhum dropper encontrado")
+	ErrSectionFull     = errors.New("secção cheia")
+	ErrTooManyPills    = errors.New("demasiados comprimidos fornecidos")
+	ErrTooFewPills     = errors.New("poucos comprimidos fornecidos")
+	ErrInvalidPosition = errors.New("posição de secção fora do intervalo permitido")
+	ErrUnexpectedError = errors.New("erro inesperado encontrado")
+	ErrSectionIsFull   = errors.New("secção cheia")
+)
+
+type MqttActionRequest struct {
+	Topic string
+	Value []byte
+}
+
 // TODO - Scan all dropper sections, to find which have the pills necessary to fulfil the request
+
+// PillDispenseBGJob runs every five seconds, checks the schedules for ones that should be delivered now
+func PillDispenseBGJob(db *gorm.DB, ch chan MqttActionRequest) (err error) {
+	// Delay function execution
+	time.Sleep(time.Second * 5)
+
+	time_now := time.Now().UTC()
+	ceiling_up, ceiling_down :=
+		time_now.Add(time.Second*5).UTC(),
+		time_now.Add(time.Second*5*-1).UTC()
+
+	schedules := make([]DispenseSchedule, 0, 15)
+	err = db.
+		Model(&DispenseSchedule{}).
+		Where("active = true and (start_date <= ? and ? >= start_date) and end_date > ?", ceiling_up, ceiling_down, time_now).
+		Find(&schedules).
+		Error
+
+	if err != nil {
+		log.Printf("Erro ao buscar schedules")
+		return
+	}
+
+	if len(schedules) == 0 {
+		log.Println("No schedules found")
+		return
+	}
+	log.Println("Schedules found")
+
+	for _, schedule := range schedules {
+		// interval, _ := time.ParseDuration(schedule.Interval.String())
+		schedule_start := schedule.StartDate.UTC()
+		interval_subtraction := time.Date(
+			schedule_start.Year(),
+			schedule_start.Month(),
+			schedule_start.Day(),
+			// ------------------
+			time_now.UTC().Hour(),
+			time_now.UTC().Minute(),
+			time_now.UTC().Second(),
+			time_now.UTC().Nanosecond(),
+			// ------------------
+			time.UTC,
+		)
+		time_diference := schedule_start.Sub(interval_subtraction)
+
+		interval_above := time_diference > (time.Hour*8)+time.Second*5
+		interval_bellow := time_diference < (time.Hour*8)-time.Second*5
+
+		if interval_above || interval_bellow {
+			return
+		}
+
+		var dropper Dropper
+		err = db.Preload("Sections.Positions").Find(&dropper, schedule.DropperID).Error
+		if err != nil {
+			log.Printf("Erro de base de dados: %e", err)
+			return
+		}
+
+		var scheduled_pills ScheduledPills
+		err = db.Select("id").Find(&scheduled_pills, &ScheduledPills{DispenseScheduleID: schedule.ID}).Error
+		if err != nil {
+			log.Printf("Erro de base de dados: %e", err)
+			return
+		}
+
+		pills := new([]Pill)
+		err = db.Where("scheduled_pills_id = ?", scheduled_pills.ID).Find(&pills).Error
+		if err != nil {
+			log.Printf("Erro de base de dados: %e", err)
+			return
+		}
+
+		// Go get the pills sections and positions
+
+		for _, pill := range *pills {
+			val := map[string]interface{}{}
+			err = db.
+				Model(&Position{}).
+				Select("dropper_section_id", "position").
+				Where("empty = ? and pill_name = ?", false, pill.Name).
+				Find(&val).
+				Limit(int(pill.Count)).
+				Error
+
+			if err != nil {
+				log.Printf("Erro de base de dados: %e", err)
+				continue
+			}
+
+			ch <- MqttActionRequest{
+				Topic: mqtt_api.BuildDeviceDropPillRoute(fmt.Sprintf("%d", schedule.DropperID)),
+				Value: []byte(fmt.Sprintf("0,%d", val["position"])),
+			}
+		}
+	}
+
+	log.Println("Ran schedule search")
+	return
+}
 
 func (d *Dropper) CreateDispenseSchedule(
 	db *gorm.DB,
@@ -101,22 +217,51 @@ func (d *Dropper) CreateDispenseSchedule(
 	name, descricao string,
 	start, end time.Time,
 	interval time.Duration,
+	pills map[string]int,
 ) (err error) {
 	schedule := DispenseSchedule{
 		DropperID:   d.ID,
 		Name:        name,
 		Active:      active,
 		Description: descricao,
-		StartDate:   start,
-		EndDate:     end,
+		StartDate:   start.UTC(),
+		EndDate:     end.UTC(),
 		Interval:    interval,
 	}
 
 	// Create if not exists
-	err = db.FirstOrCreate(DispenseSchedule{Name: name}, &schedule).Error
+	err = db.Create(&schedule).Error
 	if err != nil {
-		log.Printf("Erro inesperado ao criar drop schedule: %s", err.Error())
-		return err
+		log.Printf("Erro inesperado ao criar drop schedule: %s", err)
+		return
+	}
+
+	// Create scheduled pills
+	scheduled_pills := ScheduledPills{
+		DispenseScheduleID: schedule.ID,
+		Dispensed:          false,
+	}
+	err = db.Create(&scheduled_pills).Error
+	if err != nil {
+		log.Printf("Erro inesperado ao criar pill schedule: %s", err)
+		return
+	}
+
+	pill_list := make([]Pill, len(pills))
+	log.Printf("LEN: %d", len(pill_list))
+	i := 0
+	for k, v := range pills {
+		pill_list[i] = Pill{
+			ScheduledPillsID: scheduled_pills.ID,
+			Name:             k,
+			Count:            uint(v),
+		}
+		i += 1
+	}
+	err = db.Create(&pill_list).Error
+	if err != nil {
+		log.Printf("Erro inesperado ao criar pill schedule: %s", err)
+		return
 	}
 
 	return
@@ -126,28 +271,33 @@ func (d *Dropper) CreateDispenseSchedule(
 // e recarrega se possivel esse comprimido na secção definida da máquina escolhida
 func (dp *Dropper) ReloadSection(db *gorm.DB, section uint, pillName string, count uint) error {
 	if count > 9 {
-		return errors.New("demasiados comprimidos fornecidos")
+		return ErrTooManyPills
 	} else if count < 1 {
-		return errors.New("poucos comprimidos fornecidos")
+		return ErrTooFewPills
 	}
 
 	if section < 1 || section > 9 {
-		return errors.New("posição de secção fora do intervalo permitido")
+		return ErrInvalidPosition
 	}
 	// Reformat for section to be between 0 and 8, and not 1 - 9
 	section -= 1
 
+	// Busca o dropper pedido
 	err := db.Model(&Dropper{}).First(nil, "id", dp.ID).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return errors.New("dropper não encontrado")
+		return ErrDropperNotFound
 	} else if err != nil {
 		log.Printf("Erro inesperado: %s", err.Error())
-		return errors.New("erro inesperado encontrado")
+		return ErrUnexpectedError
 	}
 	dp.reloadDropperData(db)
 
+	if len(dp.Sections) < 1 {
+		return ErrDropperNotFound
+	}
+
 	if len(dp.Sections[section].Positions) > 8 {
-		return errors.New("secção cheia")
+		return ErrSectionIsFull
 	}
 
 	dp.Sections[section].Positions = append(dp.Sections[section].Positions, Position{
@@ -215,7 +365,6 @@ func (dp *Dropper) CreateDropperSection(db *gorm.DB, name string, pills PillList
 		}
 	}
 
-	// log.Printf("PillCount: %d", pillCount)
 	newSection = DropperSection{
 		DropperID:       dp.ID,
 		Section:         name,
@@ -249,14 +398,6 @@ func (dp *Dropper) CreateDropperSection(db *gorm.DB, name string, pills PillList
 	return newSection.ID, nil
 }
 
-// MigrateAll runs all migrations for the models defined in this folder
-func MigrateAll(db *gorm.DB) {
-	err := db.AutoMigrate(&Dropper{}, &DispenseSchedule{}, &DropperSection{}, &Position{}, &ScheduledPills{}, &Pill{})
-	if err != nil {
-		log.Fatalf("Failed to migrate gorm models: %s", err.Error())
-	}
-}
-
 // NewDropper creates a new dropper struct instance
 func NewDropper(name string, machine_url string) *Dropper {
 	return &Dropper{
@@ -274,4 +415,12 @@ func (d *Dropper) Create(db *gorm.DB) (uint, error) {
 	result := db.Create(d)
 
 	return d.ID, result.Error
+}
+
+// MigrateAll runs all migrations for the models defined in this folder
+func MigrateAll(db *gorm.DB) {
+	err := db.AutoMigrate(&Dropper{}, &DispenseSchedule{}, &DropperSection{}, &Position{}, &ScheduledPills{}, &Pill{})
+	if err != nil {
+		log.Fatalf("Failed to migrate gorm models: %s", err.Error())
+	}
 }

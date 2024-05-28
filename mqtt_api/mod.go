@@ -12,12 +12,20 @@ import (
 
 // MQTT Topics
 const (
+	Wildcard = "/#"
+	// ----------------------
 	HealthCheckROOT = "health"
 	HealthCheckIsUp = "/up"
 	// -----------------------
-	DevicesROOT     = "devices/disp"
-	DevicesRegister = "/register/#"
+	DevicesROOT   = "devices/disp"
+	DevicesDrop   = "/drop"
+	DevicesREload = "/reload"
+	// -----------------------
 )
+
+func BuildDeviceDropPillRoute(device_id string) string {
+	return DevicesROOT + DevicesDrop + "/" + device_id
+}
 
 // NewMqttServer cria um novo servidor mqtt que permite comunicação full duplex
 func NewMqttServer() *mqtt.Server {
@@ -27,12 +35,12 @@ func NewMqttServer() *mqtt.Server {
 
 	server.AddHook(new(auth.AllowHook), nil)
 
-	err := server.Subscribe(DevicesROOT+DevicesRegister, 1, func(cl *mqtt.Client, sub packets.Subscription, pk packets.Packet) {
+	err := server.Subscribe(DevicesROOT+DevicesDrop+Wildcard, 1, func(cl *mqtt.Client, sub packets.Subscription, pk packets.Packet) {
 		topic := strings.Split(pk.TopicName, "/")
 		device_id := topic[len(topic)-1]
 
 		if device_id == "" {
-			server.Log.Info(DevicesROOT+DevicesRegister, "status", "responded")
+			server.Log.Info(DevicesROOT+DevicesDrop+Wildcard, "status", "responded")
 
 			err := cl.WritePacket(packets.Packet{
 				FixedHeader: packets.FixedHeader{
