@@ -7,7 +7,6 @@ import (
 	"log"
 	"time"
 
-	"github.com/TomascpMarques/dropmedical/mqtt_api"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
@@ -113,7 +112,7 @@ type MqttActionRequest struct {
 // PillDispenseBGJob runs every five seconds, checks the schedules for ones that should be delivered now
 func PillDispenseBGJob(db *gorm.DB, ch chan MqttActionRequest) (err error) {
 	// Delay function execution
-	time.Sleep(time.Second * 5)
+	time.Sleep(time.Second * 10)
 
 	time_now := time.Now().UTC()
 	ceiling_up, ceiling_down :=
@@ -123,7 +122,7 @@ func PillDispenseBGJob(db *gorm.DB, ch chan MqttActionRequest) (err error) {
 	schedules := make([]DispenseSchedule, 0, 15)
 	err = db.
 		Model(&DispenseSchedule{}).
-		Where("active = true and (start_date <= ? and ? >= start_date) and end_date > ?", ceiling_up, ceiling_down, time_now).
+		Where("active = true and (? <= end_date and start_date <= ?) and end_date > ?", ceiling_up, ceiling_down, time_now).
 		Find(&schedules).
 		Error
 
@@ -139,28 +138,32 @@ func PillDispenseBGJob(db *gorm.DB, ch chan MqttActionRequest) (err error) {
 	log.Println("Schedules found")
 
 	for _, schedule := range schedules {
-		// interval, _ := time.ParseDuration(schedule.Interval.String())
-		schedule_start := schedule.StartDate.UTC()
-		interval_subtraction := time.Date(
-			schedule_start.Year(),
-			schedule_start.Month(),
-			schedule_start.Day(),
-			// ------------------
-			time_now.UTC().Hour(),
-			time_now.UTC().Minute(),
-			time_now.UTC().Second(),
-			time_now.UTC().Nanosecond(),
-			// ------------------
-			time.UTC,
-		)
-		time_diference := schedule_start.Sub(interval_subtraction)
+		interval, _ := time.ParseDuration(fmt.Sprintf("%v", schedule.Interval*time.Second))
+		log.Printf("Interval: %+v", interval)
 
-		interval_above := time_diference > (time.Hour*8)+time.Second*5
-		interval_bellow := time_diference < (time.Hour*8)-time.Second*5
+		// schedule_start := schedule.StartDate.UTC()
+		// interval_subtraction := time.Date(
+		// 	schedule_start.Year(),
+		// 	schedule_start.Month(),
+		// 	schedule_start.Day(),
+		// 	// ------------------
+		// 	time_now.UTC().Hour(),
+		// 	time_now.UTC().Minute(),
+		// 	time_now.UTC().Second(),
+		// 	time_now.UTC().Nanosecond(),
+		// 	// ------------------
+		// 	time.UTC,
+		// )
+		// time_diference := interval_subtraction.Sub(schedule_start)
+		// time_diference := (schedule_start).Sub(interval_subtraction)
 
-		if interval_above || interval_bellow {
-			return
-		}
+		// interval_above := time_diference > interval+time.Second*5
+		// interval_bellow := time_diference < interval-time.Second*5
+
+		// if interval_above || interval_bellow {
+		// 	log.Printf("Skipping - %s", schedule.Name)
+		// 	continue
+		// }
 
 		var dropper Dropper
 		err = db.Preload("Sections.Positions").Find(&dropper, schedule.DropperID).Error
@@ -199,9 +202,8 @@ func PillDispenseBGJob(db *gorm.DB, ch chan MqttActionRequest) (err error) {
 				log.Printf("Erro de base de dados: %e", err)
 				continue
 			}
-
 			ch <- MqttActionRequest{
-				Topic: mqtt_api.BuildDeviceDropPillRoute(fmt.Sprintf("%d", schedule.DropperID)),
+				Topic: fmt.Sprintf("angle%d", schedule.DropperID),
 				Value: []byte(fmt.Sprintf("0,%d", val["position"])),
 			}
 		}

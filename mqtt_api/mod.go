@@ -19,12 +19,16 @@ const (
 	// -----------------------
 	DevicesROOT   = "devices/disp"
 	DevicesDrop   = "/drop"
-	DevicesREload = "/reload"
+	DevicesReload = "/reload"
 	// -----------------------
 )
 
 func BuildDeviceDropPillRoute(device_id string) string {
 	return DevicesROOT + DevicesDrop + "/" + device_id
+}
+
+func BuildDeviceReloadPillRoute(device_id string) string {
+	return DevicesROOT + DevicesReload + "/" + device_id
 }
 
 // NewMqttServer cria um novo servidor mqtt que permite comunicação full duplex
@@ -70,7 +74,7 @@ func NewMqttServer() *mqtt.Server {
 				TopicName: HealthCheckROOT + HealthCheckIsUp,
 				Payload:   []byte("UP"),
 			}, true)
-			time.Sleep(time.Minute / 2)
+			time.Sleep(time.Second * 5)
 		}
 	}()
 

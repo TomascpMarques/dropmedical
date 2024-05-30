@@ -38,11 +38,11 @@ func LoadEnvironment() {
 	}
 }
 
-func SetupGinApp(db *gorm.DB) (engine *gin.Engine, err error) {
+func SetupGinApp(db *gorm.DB, ch *chan models.MqttActionRequest) (engine *gin.Engine, err error) {
 	models.MigrateAll(db)
 
 	engine = gin.Default()
-	http_api.SetupRoutesGroup(engine, db)
+	http_api.SetupRoutesGroup(engine, db, ch)
 
 	return
 }

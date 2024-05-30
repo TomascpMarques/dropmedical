@@ -15,7 +15,7 @@ import (
 )
 
 // SetupRoutesGroup groups the API routes into a Engine route group with the path prefix of `/api`
-func SetupRoutesGroup(router *gin.Engine, db *gorm.DB) {
+func SetupRoutesGroup(router *gin.Engine, db *gorm.DB, ch *chan models.MqttActionRequest) {
 	// Logger
 	router.Use(gin.LoggerWithFormatter(apiLogger))
 
@@ -27,7 +27,7 @@ func SetupRoutesGroup(router *gin.Engine, db *gorm.DB) {
 	// ------------------------
 	api.POST("/dropper", func(ctx *gin.Context) { registerDropperPOST(ctx, db) })
 	api.POST("/dropper/section", func(ctx *gin.Context) { registerDropperSectionPOST(ctx, db) })
-	api.POST("/dropper/section/reload", func(ctx *gin.Context) { reloadDropperSectionPOST(ctx, db) })
+	api.POST("/dropper/section/reload", func(ctx *gin.Context) { reloadDropperSectionPOST(ctx, db, ch) })
 	api.POST("/dropper/schedule", func(ctx *gin.Context) { createDropperDispenseSchedulePOST(ctx, db) })
 
 	api.GET("/dropper/section/pills", func(ctx *gin.Context) { dropperSectionPillsGET(ctx, db) })
@@ -277,7 +277,7 @@ type reloadDropperSection struct {
 	Quantity uint      `form:"pill_quantity" json:"pill_quantity"`
 }
 
-func reloadDropperSectionPOST(c *gin.Context, db *gorm.DB) {
+func reloadDropperSectionPOST(c *gin.Context, db *gorm.DB, ch *chan models.MqttActionRequest) {
 	var reloadSectionAction reloadDropperSection
 
 	if err := c.ShouldBind(&reloadSectionAction); err != nil {
@@ -332,6 +332,11 @@ func reloadDropperSectionPOST(c *gin.Context, db *gorm.DB) {
 			),
 		)
 		return
+	}
+
+	*ch <- models.MqttActionRequest{
+		Topic: fmt.Sprintf("angle%d", reloadSectionAction.Section),
+		Value: []byte(fmt.Sprintf("0,%d", reloadSectionAction.Section)),
 	}
 
 	c.JSON(200, gin.H{

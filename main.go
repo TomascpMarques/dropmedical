@@ -6,7 +6,9 @@ import (
 	"net"
 	"os"
 	"sync"
+	"time"
 
+	"github.com/gin-contrib/cors"
 	listeners "github.com/wind-c/comqtt/v2/mqtt/listeners"
 
 	database "github.com/TomascpMarques/dropmedical/database"
@@ -68,11 +70,29 @@ func main() {
 		log.Fatal(err)
 	}
 
-	app, err := setup.SetupGinApp(db) // listen and serve on 0.0.0.0:port / [::]:port
+	app, err := setup.SetupGinApp(db, &interop_mqtt_channel) // listen and serve on 0.0.0.0:port / [::]:port
 	if err != nil {
 		log.Fatal(err)
 	}
 	go func() {
+		app.Use(cors.New(cors.Config{
+			// AllowOrigins: []string{
+			// 	"http://192.168.55.76:8080/*",
+			// 	"http://192.168.54.217:3000/*",
+			// 	"http://192.168.54.217:8080/*",
+			// 	"http://localhost:3000/*",
+			// 	"http://localhost:3000/recarregar",
+			// },
+			AllowAllOrigins:  true,
+			AllowMethods:     []string{"POST", "GET"},
+			AllowHeaders:     []string{"Origin", "Access-Control-Allow-Origin"},
+			ExposeHeaders:    []string{"Content-Length"},
+			AllowCredentials: true,
+			/* AllowOriginFunc: func(origin string) bool {
+				return origin == "https://github.com"
+			}, */
+			MaxAge: 12 * time.Hour,
+		}))
 		err = app.RunListener(tcp_listener_gin)
 		if err != nil {
 			log.Fatal(err)
